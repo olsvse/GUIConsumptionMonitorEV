@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+# coding: utf8
 from kivy.app import App
 from kivy.uix.dropdown import DropDown
 from kivy.uix.button import Button
@@ -145,7 +147,7 @@ class ConsumptionMonitorApp(App):
                         else:
                             self.SetToast("SoCDisp ist ausserhalb des erlaubten Bereichs")
                     else:
-                        self.SetToast("Keinen Relevanten Daten-Abschnitt für SoC gefunden")
+                        self.SetToast("Keinen Relevanten Datenabschnitt für SoC gefunden")
                 else:
                     self.SetToast("2105 ist ein unbekannter Befehl") 
                 # Befehl 2101 absetzen
