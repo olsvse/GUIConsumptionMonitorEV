@@ -303,38 +303,53 @@ class ConsumptionMonitorApp(App):
         return pid_data
                        
 
+    # Initialisierung der OBD-Dongels, bzw. Abschaltung des Dongels wenn die Ladung beendet ist
     def init_Dongel(self,command,AusgabeText,OBD_Dongel):
+        # Anzeige, dass jetzt ein OBD-Befehl an den Dongel geschickt wird        
         self.SetToast(AusgabeText)
-        local_data="Unknown command"        
-        ByteBefehl=bytes(command, 'utf-8')
-        OBD_Dongel.write(ByteBefehl)
+        # OBD-Befehl an Dongel schicken
+        # ByteBefehl=bytes(command, 'utf-8')
+        OBD_Dongel.write(command.encode("ascii"))
         OBD_Dongel.flush()
+        # Rückgabe-Variable Initialisieren
         seq = []
-        joineddata=''
+        # Start der OBD-Lese-Schleife
         while True:
-            reading = OBD_Dongel.read()
-            seq.append(reading)
-            joineddata = ' '.join(str(v) for v in seq).replace(' ', '')
-            err = re.search('ERROR', joineddata)
-            if err:
-                self.SetToast("Befehl " + command + "ist Fehlgeschlagen")
-                local_data="Fehler"
-                break
-            Unbekannt = re.search('\?', joineddata)
-            if Unbekannt:
-                self.SetToast("Befehl " + command + "ist Unbekannt") 
-                local_data="Unknown command"
-                break 
-            m = re.search('>', joineddata)
-            if m:
-                tmpdata0=bytes('-',"utf-8").join(seq)
-                tmpdata1=tmpdata0.decode("utf-8")
-                tmpdata2=tmpdata1.replace(' ', '')
-                tmpdata3=tmpdata2.replace('-', '')
-                local_data=tmpdata3.replace('\r', '')
-                self.SetToast("Befehl " + command + " ist Abgearbeitet")
-                break       
+            # abfangen des Lese-Fehlers, wenn der Dongel nichts zurücksendet
+            try:
+                reading = OBD_Dongel.read()
+            # Abbrechen des Aktuellen Lese-Vorganges und Ausgabe eines Fehler-Textes
+            except serial.serialutil.SerialException:
+                verb="OBD-Dongel lesen nicht möglich"
+                local_data="LeseFehler"
+                break                
+            # Lesen war erfolgreich
+            else:
+                # Aktueller Datenblock an die vorhandenen Datenblöcke hängen 
+                seq.append(reading)                
+                # Wenn "ERROR" in der Rückgabe vorkommt, dann eine Fehler-Ausgabe machen und Schleife abbrechen
+                if b'ERROR' in reading:
+                    verb = "Fehlgeschlagen"
+                    local_data="Fehler"
+                    break
+                # Wenn "?" in der Rückgabe vorkommt, dann "Unbekannter Befehl" ausgeben und Schleife abbrechen 
+                elif b'?' in reading:
+                    verb = "Unbekannt"
+                    local_data="Unknown command"
+                    break
+                # Wenn das ende des Blockes erricht ist, dann alle empfangenen Blöcke zu einem String zusammenfügen bereinigen und die lese-Schleife beenden
+                elif b'>' in reading:
+                    # Zu einem utf-8-String zusammenfügen
+                    local_data = b' '.join(seq).decode("utf-8")
+                    # Alle Leerzeichen, alle Minus und alle Return entfernen
+                    local_data = local_data.replace(' ', '').replace('-', '').replace('\r', '')
+                    verb = "Abgearbeitet"
+                    break
+        # Ausgabe, dass der OBD-Befehl abgearbeitet ist
+        self.SetToast("Befehl {} ist {}".format(command, verb))
+        # Rückgabe des empfangenen Strings.      
         return local_data
+
 
     def get_bms_data(self,command,AusgabeText,OBD_Dongel):
         self.SetToast(AusgabeText)        
