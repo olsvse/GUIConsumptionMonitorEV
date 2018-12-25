@@ -666,7 +666,7 @@ class ConsumptionMonitorApp(App):
         # Impuls-Zähler wird mit 0 initialisiert
         WattStundenCount=0
         # Toggel-Verhinderer wird auf false initialisiert
-        NoToggle=false
+        NoToggle=False
         # Globaler Strom-Zähler wird auf 0 initialisiert
         self.KiloWattStunden=0.0
         # Start der Strom-Zähler-Thread-Schleife
