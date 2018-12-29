@@ -243,48 +243,46 @@
             BoxLayout:
                 orientation: "horizontal"  
                 Label:
-                    text:"  Preisbasis: "
+                    text:"Preisbasis:\n "
                     width: 20
                     size_hint_y: 0.1
                     size_hint_min_y: None               
-                    halign: "left"
-                    valign: "middle"
                 Spinner:
                     values: ('Home', 'kWh', 'Minuten', 'Pauschale')
                     id: PreisBasis
                     text: "Home"
-                    size_hint_y: 0.1
-                    size_hint_min_y: None                
+                    size_hint_y: 0.3
+                    size_hint_min_y: None
                 Label:
                     text:" "
                     width: 20
                     size_hint_y: 0.1
-                    size_hint_min_y: None                    
+                    size_hint_min_y: None
+            # Platzhalter                    
             Label:
                 text: ""
                 size_hint_y: 0.1
-                size_hint_min_y: None 
-            # Einheiten-Preis
+                size_hint_min_y: None
+            # Einheiten-Preis                             
             BoxLayout:
-                orientation: "horizontal"  
+                orientation: "horizontal"
+                valign: "middle"
                 Label:
-                    text:"  Preis: "
+                    text:"Preis:\n "
                     width: 20
                     size_hint_y: 0.1
                     size_hint_min_y: None                
-                    halign: "left"
-                    valign: "middle"
                 Button:
                     id: Preis
                     text: "0.00"             
                     on_press: app.OpenKeyBoard(self,root,app)
-                    size_hint_y: 0.1
+                    size_hint_y: 0.3
                     size_hint_min_y: None 
                 Label:
-                    text:" €"
+                    text:" €\n "
                     width: 20 
                     size_hint_y: 0.1
-                    size_hint_min_y: None 
+                    size_hint_min_y: None
             # Platzhalter
             Label:
                 text: ""
@@ -294,18 +292,16 @@
             BoxLayout:
                 orientation: "horizontal"  
                 Label:
-                    text:"  Ladungstyp: "
+                    text:"Ladungstyp:\n "
                     width: 20
                     size_hint_y: 0.1
                     size_hint_min_y: None
-                    halign: "left"
-                    valign: "middle"
                 Spinner:
                     text: "Vollladung"
                     values: ('Vollladung', 'Teilladung', 'Stützladung')
                     id: LadungsTyp
-                    size_hint_y: 0.1
-                    size_hint_min_y: None                     
+                    size_hint_y: 0.3
+                    size_hint_min_y: None 
                 Label:
                     text:" "
                     width: 20
@@ -317,8 +313,6 @@
                 text_size:self.size
                 size_hint_y: 0.1
                 size_hint_min_y: None                
-                halign: "left"
-                valign: "middle"
     # Platzhalter
     Label:
         text: ""

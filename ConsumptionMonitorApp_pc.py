@@ -782,7 +782,7 @@ class ConsumptionMonitorApp(App):
     @mainthread
     def read_ini_file(self):
         # Ini-File einlesen
-        self.config.read('/media/pi/INTENSO/consumptionmonitor.ini')
+        self.config.read('consumptionmonitor.ini')
         # Preis für eine kWh beim Heimladen auslesen
         homepreis=self.config['DEFAULT']['preis']
         # Preis in der GUI eintragen
@@ -844,7 +844,7 @@ class ConsumptionMonitorApp(App):
             # den Aktuellen Preis aus der globalen variable einlesen und in die Ini-Configuration eintragen
             self.config['DEFAULT'] = {'preis': self.root.ids.Preis.text}
             # Ini-Datei schreiben
-            with open('/media/pi/INTENSO/consumptionmonitor.ini', 'w') as configfile:
+            with open('consumptionmonitor.ini', 'w') as configfile:
                 self.config.write(configfile)
 
     # einblenden einer Zahlen-Tastatur, wenn der Tacho-Stand oder der Preis eingegeben werden muss.
