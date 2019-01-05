@@ -1,0 +1,35 @@
+/* Navigations-Elemente in einer reihe anordnen und "normale" Texte daraus machen */
+#navibereich li {
+  display: inline;            /* Listenelemente nebeneinander */
+  list-style-type: none;      /* Aufzählungszeichen entfernen */
+}
+
+/* Links so verändern, dass sie wie normaler Text ausehen */
+#navibereich a {
+  color: black;                  /* Schriftfarbe schwarz */ 
+  text-decoration: none;         /* Unterstreichung entfernen */ 
+  padding: 4px 8px;              /* oben/unten 4px, re/li 8px */
+}
+
+/* Naviagtions-Bereich grafisch gestalten */
+#navibereich {      
+  background-image: linear-gradient(#d9d9d9, #c3c3c3); /* Hintergrundfarbe (Verlauf) für die Navigation */
+  padding: 4px 0;                   /* Innenabstand: oben/unten 4px, li/re 0 */
+  border-top: 3px solid #668BCC;    /* Rahmenlinie oben */
+  border-bottom: 3px solid #668BCC; /* Rahmenlinie unten */
+  margin: 0;                        /* Keinen Außenabstand */
+  text-align: center;               /* menu-Elemente in der Seiten-Mitte */
+}
+
+/* Hervorheben der aktiven Seite */
+#navibereich a:hover,           /* mit Komma am Ende */
+#Ladezustand #navi01 a,         /* mit Komma am Ende */
+#Tabelle #navi02 a,             /* mit Komma am Ende */
+#Statistik #navi03 a {          /* ohne Komma am Ende */
+  background-image: linear-gradient(#b9b9b9, #a3a3f3); /* Hintergrundfarbe (Verlauf) für die selectierte Seite */
+}
+
+/* Überschriften formatieren */
+h1 {
+  text-align: center;               /* Überschrift in der Seiten-Mitte */
+}
