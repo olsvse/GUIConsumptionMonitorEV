@@ -94,6 +94,11 @@
                 title: 'Consumption-Monitor'
                 with_previous: False
             ActionOverflow:
+            # Button um die abgestürzte Ladungs-Erfassung zu repRIEREN
+            ActionToggleButton:
+                text: 'Repair'
+                id: RepairButton
+                on_press: root.start_OBDRepair_thread(self,root,app)            
             # Button um die Ladungs-Erfassung zu starten
             ActionToggleButton:
                 text: 'Connect'

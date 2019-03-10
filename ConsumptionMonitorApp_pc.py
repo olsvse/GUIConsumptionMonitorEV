@@ -18,6 +18,8 @@ import io
 import configparser
 #import RPi.GPIO as GPIO
 import csv
+import os
+from os import path 
 
 # Setze die Fenster-Größe der GUI auf 800x400
 Window.size = (800, 480)
@@ -35,6 +37,9 @@ class RootWidget(BoxLayout):
     StopUhr = threading.Event()
     # Thread-Element für OBD-Aktionen Anlegen
     StopOBD = threading.Event()
+    # Thread-Element für OBDRepair-Aktionen Anlegen
+    StopOBDRepair = threading.Event()
+
 
     # Thread für Uhr Starten
     # Thread für OBD-Aktionen starten
@@ -60,6 +65,20 @@ class RootWidget(BoxLayout):
         else:
             # OBD-Thread stoppen
             app.root.StopOBD.set()
+
+
+    # Thread für OBD-Aktionen zur Reperatur einer Abgstürzten Datenerfassung starten
+    # self      --> Handel zur App
+    # button    --> Handel zum Auskösenden GUI-Element
+    # gui       --> Handel zur GUI
+    # App       --> Handel zur App
+    def start_OBDRepair_thread(self, button, gui, app):
+        if app.root.ids.RepairButton.state == 'down':
+            # OBD-Thread starten
+            threading.Thread(target=app.OBDRepair_thread, args=()).start()
+        else:
+            # OBD-Thread stoppen
+            app.root.StopOBDRepair.set()
 
 
 # Haupt-Programm
@@ -137,8 +156,7 @@ class ConsumptionMonitorApp(App):
 
     #Auslese-Variable für den Ini-File-Parser
     config=configparser.ConfigParser()
-    
-    
+
     # Thread zur berechnung der aktuellen urzeit und die Anzeige dieser in der Menu-Leiste
     # self  --> Handel zur App    
     def uhr_thread(self):
@@ -151,6 +169,196 @@ class ConsumptionMonitorApp(App):
             # Warte bis zur nächsten Sekunde
             time.sleep(1)
 
+
+    # Thread zur Reperatur einer Abgestürzten Datenerfassung beim Starten des Fahrzeugs nach Ladeende.
+    # Es Wird nur End-Ladestand per OBD abgefragt und dann aus den Bestehenden Daten der Datensatz Restauriert.
+    # Für die Berechnung der Bezogenen Energiemenge wird ein Ladeverlust von 13% angenommen.
+    # Momentan hard codiert, kann aber in zukunft entweder Dynamisch vom aus den angelegten Daten abgefragt werden 
+    # oder als Mittelweg über die ini-Datei vorgegeben.
+    # Bei der Berechnung der Ladedauer wird ebenfalls als mit den hardcodierten 13% Ladeverlust gerechnet.
+    # Diese weden auf die 3600W als maximalleistung am Zähler angerechnet. Damit kann auf die Ladeleistung im Akku 
+    # zurückgerechnet werden. Aus diesem Wert kann dann über die geladene Energie auf die Ladedauer gerechnet werden. 
+    # self  --> Handel zur App
+    def OBDRepair_thread(self):
+        self.root.StopOBD.clear()
+        self.root.StopOBDRepair.clear()
+        self.StopCounter.clear()
+        # Die Reperatur-Datei einlesen
+        DateiDa = path.exists("/media/pi/INTENSO/StartData.txt")
+        RepData = open("/media/pi/INTENSO/StartData.txt","r").readlines()
+        if ("DB-Write done" in RepData[2].strip()) or (not DateiDa):
+            self.SetToast("Es gibt nichts zu reparieren")
+            # Beende den OBD-Thread
+            self.root.StopOBDRepair.set()
+            return
+        # schreibe das Ladedatum in die entsprechende globale Logvariable        
+        self.LogDate = RepData[0].strip()
+        # schreibe den Zeitpunkt der Logerstellung in die entsprechende globale Logvariable        
+        self.LogTime = RepData[1].strip()
+        # schreibe den Ladestart in die entsprechende globale Logvariable        
+        self.LogChargeStart = RepData[1].strip()
+        # schreibe den Startwert für die Ladung in die entsprechende globale Logvariable
+        self.LogCumulativeChargeEnergyStart = RepData[2].strip()
+        # schreibe den Tachostand in die entsprechende globale Logvariable
+        self.LogOdoMeterValue = RepData[3].strip()
+        # schreibe die Preisbasis in die entsprechende globale Logvariable        
+        self.LogPreisBasis = RepData[4].strip()
+        # schreibe den Preis in die entsprechende globale Logvariable        
+        self.LogPreis = RepData[5].strip()
+        # schreibe den Ladungstyp in die entsprechende globale Logvariable
+        self.LogChargeTyp = RepData[6].strip()
+        # Setze die Ladeverluste
+        LadeVerluste=13.0
+        # initialisierung des Bluetooth-Interface-Handels
+#        Dongel=serial.Serial("/dev/rfcomm0", timeout=None)
+        # initialisierung des Bluetooth-Interface auf 57600 Baud
+#        Dongel.baudrate = 57600
+#        Dongel.flushInput()
+        
+        # eine Sekunde um die Initialisierung "Sacken" zu lassen
+        time.sleep(1)
+        # Dongel in der GUI als Verbunden aber nicht initialisiert anzeigen
+        self.set_icons("ConnectState",1)
+        # Liste mit den Dongelk-Initialisierungs-Befehlen und den zugehörigen Ausgabe-Texten
+        InitListe = [["Z", "Dongel zurueckgesetzt"], ["BRD 45", "Baudrate auf 57600 bps gesetzt"],
+                     ["L0", "Linefeed ausgeschaltet"], ["E0", "Echo ausgeschaltet"], ["S0", "Leerzeichen abgeschaltet"],
+                     ["h0", "header ausgeschaltet"], ["CAF1", "Autoformat eingeschaltet"],
+                     ["CFC1", "CANFLOW eingeschaltet"], ["CM7FF", "Maske gesetzt"],
+                     ["AR", "Autoresponse eingeschaltet"], ["CF7EC", "Filter auf 7EC gesetzt"]]
+        # jeder Befehl in der Liste wird an den Dongel gesended
+        for Befehl, Ausgabe in InitListe:
+            # Befehl zusammen setzten
+            Kommando='AT'+ Befehl +'\r\n'
+            # Initialisierung-Befehl an Dongel absetzen
+            obddate_init=self.init_Dongel(Kommando,Ausgabe,Dongel)
+            # Falls es sich um die Initialisietung mittels ATZ handelt und diese nicht erkannt wird,
+            # Solange in der Schleife drehen bis sie erkannt wird
+            while obddate_init=="Unknown command" and Befehl=="Z":
+                time.sleep(1)
+                obddate_init=self.init_Dongel(Kommando,Ausgabe,Dongel)
+            # Ausgabe, dass der initbefehl abgearbeitet ist
+            self.SetToast(Ausgabe)
+            # Eine Sekunde warten bis der nächste Init-Befehl abgesetzt werden kann
+            time.sleep(1)
+        # Dongel in der GUI als Verbunden und initialisiert anzeigen
+        self.set_icons("ConnectState",2)            
+        # Haupt-Schleife um die PIDs regelmäsig abzufragen
+        while True:
+            # Testen on die Abbruch-Bedingung, Ladung gestoppt oder App schließen getriggert wurde
+            if self.root.StopOBDRepair.is_set():
+                # Aktuellen Tread beenden
+                break
+            # Befehl 2101 absetzen
+            obddata=self.get_bms_data("2101",Dongel)
+            # Test ob der PID 2101 richtig verarbeitet werden konnte.
+            if obddata != "Unknown command" and obddata != "LeseFehler" and obddata != "Fehler":
+                # Extrahiere den Physikalischen Wert für die Spannung der Hilfsbatterie.
+                BattVolt=self.get_pid_data(obddata,"AuxBat")
+                # Testen ob die spannung ausgelesen werden konnte
+                if BattVolt>=0:
+                    # Hilfsbatterie-Spannung ausgenen
+                    self.LogAuxBat = str(BattVolt)
+                # Hilfs-Batterie-Spannung konnte nicht extrahiert werden
+                else:
+                    # Ausgabe-Text, dass die Hilfsbatterie-Spanung nicht extrahiert werden konnte
+                    self.SetToast("Keinen Relevanten Daten-Abschnitt für Hilfsbatterie gefunden")
+                    self.LogAuxBat = str(1.0)
+                # Extrahiere den aktuellen Stand der Cummulierten geladenen Energie-Menge im Hochvolt-Akku
+                CumulativeChargedEnergy=self.get_pid_data(obddata,"ChargedEnergy")
+                # Test ob der aktuellen Stand der Cummulierten geladenen Energie-Menge im Hochvolt-Akku richtig extrahiert worden ist
+                if CumulativeChargedEnergy>=0:
+                    # Abschalt-Befehl für den OBD-Dongel zusammen setzen
+                    Kommando='AT LP\r\n'
+                    # sende das Abschalt-Kommando an den OBD-Dongel
+                    obddataclose=self.init_Dongel(Kommando,"Dongel abschalten",Dongel)
+                    # Warte 2 Sekunden um das Abschalten wirksam werden zu lassen
+                    time.sleep(2)
+                    # Setze den Verindungs-Status zurück
+                    self.set_icons("ConnectState",0)
+                    # Setze den Ladungs-Typ zurück
+                    self.set_icons("ConnectType",0)
+                    # Setze den Ladungs-status zurück
+                    self.set_icons("ChargeState",0)                    
+                    # Aktuellen Tread beenden sobald ein gültiger wert ausgelesen wurde
+                    break                    
+                # Es konnten keine Energie-mengen Werte aus dem Rückgabe-string extrahiert werden
+                else:
+                    # Ausgabe für die nicht gefundenen Energie-Menge
+                    self.SetToast("Keinen Relevanten Daten-Abschnitt für die Energie gefunden")
+            # der PID-Befehl 2101 konnte nicht verargeitet werden
+            else:
+                # Ausgabetext für problematischen 2101-Befehl
+                self.SetToast("2101 ist ein unbekannter Befehl") 
+            # Warte 1 Sekunde bis zu nächsten Abfrage der OBD-PIDs
+            time.sleep(1)
+        # Testen on die Abbruch-Bedingung, Ladung gestoppt oder App schließen getriggert wurde
+        if self.root.StopOBDRepair.is_set():
+            # Ausgabetext dass dien Reperatur abgebrochen wurde
+            self.SetToast("Die Reperatur wurde abgebrochen")
+        else:
+            ChargedEnergy = round(CumulativeChargedEnergy - self.CumulativeChargedEnergyStart,2)
+            # Schreibe den aktuellen Stand der er Cummulierten geladenen Energie-Menge im Hochvolt-Akku als End-Stand in die entsprechende globale Log-Variable
+            self.LogCumulativeChargedEnergyEnd=str(CumulativeChargedEnergy)
+            # Schreibe die Geladenen Energie-menge in die entsprechende globale Log-Variable
+            self.LogChargedEnergy=str(ChargedEnergy)
+            # Berechne die bezogene Energiemenge auf basis der geladenen Energiemenge und den Ladeverlusten
+            ReceivedEnergy = (ChargedEnergy + (ChargedEnergy * LadeVerluste / 100.0))
+            # Schreibe die bezogene Energiemenge in die entsprechende globale Log-Variable
+            self.LogReceivedEnergy = str(ReceivedEnergy)
+            # Berechne die kosten der Ladung
+            KostenRaw=self.ReceivedEnergy* float(self.LogPreis)
+            # Schreibe die Kosten in die entsprechende globale Log-Variable
+            self.LogKosten = str(KostenRaw)
+            # Ladeleistun in kWh pro Stunde ==> kW
+            ResLadeleistungkW = float(3.6 - (3.6 * LadeVerluste / 100.0))            
+            # Ladeleistung in Wh pro Minute
+            ResLadeleistungMin = ResLadeleistungkW / 60.0
+            # Ladedauer berechnen in Wh pro Minute
+            TimeDiff = ChargedEnergy/ResLadeleistungMin
+            # Minuten-Überlauf feststellen
+            if TimeDiff % 60 > 0:
+                TimeDiff=((TimeDiff)//60)+1
+            # Kein Minutenüberlauf
+            else:
+                # Minuten werden genau so ausgegeben wie berechnet
+                TimeDiff=((TimeDiff)//60)
+            self.LogChargeDuration = str(TimeDiff)
+            # Ladeende berechnen
+            # Start-Zeitpunkt in einen Timestamp umwandeln
+            StartDate=self.LogDate + " " + self.LogTime
+            StartDateTimeStamp=time.strptime(StartDate,"%d.%m.%Y %H:%M:%S")        
+            # EndDate TimeStamp berechnen aus StartDateTimeStamp + Zeitdauer
+            LogChargeEndTimeStamp= StartDateTimeStamp + datetime.timedelta(minutes = TimeDiff)
+            # Schreibe das Ladeende in die entsprechende globale Log-Variable
+            self.LogChargeEnd=LogChargeEndTimeStamp.strftime("%H:%M:%S")
+            # Beende den OBD-Thread
+            self.root.StopOBDRepair.set()             
+            # Bringe den Connect-Button in einen released zustand --> Knopf ist nicht mehr eingedrückt.
+            self.UnLockRepairButton()
+            # Zeige an, dass die OBD-Ladungs-Überwachnug beendet ist
+            self.SetToast("Ladungs-Überwachung beendet")
+            # Schreibe die Erfassten daten in die Datenbank
+            self.SendToDB()
+            # Datenbank muss nicht mehr manuell gefüllt werden
+            fobj_out = open("/media/pi/INTENSO/StartData.txt","w")
+            # Schreibe Logadatum
+            fobj_out.write(self.LogDate+"\r\n")
+            # Schreibe Loguhrzeit
+            fobj_out.write(self.LogTime+"\r\n")
+            # Markiere, dass die Datenbank geschrieben wurde 
+            fobj_out.write("DB-Write done\r\n")
+            # Schließe Logdatei
+            fobj_out.close()                                 
+        # OBD-Thread ist beended
+        return
+
+    # Repair-Button in die Start-Lage zurück-setzen
+    # Ist Teil des Haupt-Threads und wird vom OBDRepair-Thread angesprungen
+    # self  --> Handel zur App     
+    @mainthread
+    def UnLockRepairButton(self):
+        self.root.ids.RepairButton.state="normal"    
+    
     # Der OBD-Lese-Thread
     # self  --> Handel zur App
     def OBD_thread(self):
@@ -161,7 +369,6 @@ class ConsumptionMonitorApp(App):
         self.set_gui_text("ChargeTime",0)
         self.set_gui_text("SoC",0.0)
         self.set_gui_text("PowerCounter",0.0)
-
 
         # initialisierung des Bluetooth-Interface-Handels
 #        Dongel=serial.Serial("/dev/rfcomm0", timeout=None)
@@ -200,6 +407,7 @@ class ConsumptionMonitorApp(App):
         self.LadenGestoppt = False
         # Die alten thread-Stopper wieder zurücksetzen
         self.root.StopOBD.clear()
+        self.root.StopOBDRepair.clear()
         self.StopCounter.clear()
         # Dongel in der GUI als Verbunden und initialisiert anzeigen
         self.set_icons("ConnectState",2)
@@ -324,7 +532,15 @@ class ConsumptionMonitorApp(App):
                         # Schreibe Loguhrzeit
                         fobj_out.write(self.LogTime+"\r\n")
                         # Schreibe Startwert des aktuellen Stand der Cummulierten geladenen Energie-Menge im Hochvolt-Akku
-                        fobj_out.write(self.LogCumulativeChargeEnergyStart)
+                        fobj_out.write(self.LogCumulativeChargeEnergyStart+"\r\n")
+                        # Schreibe Tachostand
+                        fobj_out.write(self.root.ids.km_Tacho.text+"\r\n")
+                        #Schreibe PreisBasis
+                        fobj_out.write(self.root.ids.PreisBasis.text+"\r\n")                        
+                        #Schreibe Preis
+                        fobj_out.write(self.root.ids.Preis.text+"\r\n")
+                        #Schreibe Ladungs-Typ
+                        fobj_out.write(self.root.ids.LadungsTyp.text+"\r\n")                        
                         # Schließe Logdatei
                         fobj_out.close()
                     # Aktuelle Uhrzeit feststellen um die Ladedauer berechnen zu können
@@ -442,6 +658,16 @@ class ConsumptionMonitorApp(App):
         self.SetToast("Ladungs-Überwachung beendet")
         # Schreibe die Erfassten daten in die Datenbank
         self.SendToDB()
+        # Datenbank muss nicht mehr manuell gefüllt werden
+        fobj_out = open("/media/pi/INTENSO/StartData.txt","w")
+        # Schreibe Logadatum
+        fobj_out.write(self.LogDate+"\r\n")
+        # Schreibe Loguhrzeit
+        fobj_out.write(self.LogTime+"\r\n")
+        # Markiere, dass die Datenbank geschrieben wurde 
+        fobj_out.write("DB-Write done\r\n")
+        # Schließe Logdatei
+        fobj_out.close()         
         # OBD-Thread ist beended
         return
 
@@ -496,7 +722,7 @@ class ConsumptionMonitorApp(App):
         # Extrahierung der benötigten Datenblöcke aus dem Daten-String
         matched_string_groups = re.search(str(blockstart)+':([^;]*)'+str(blockende)+':', commanddata)
         # Weiterverarbeitung wenn der Datenstring die gewünschten Blöcke enthält
-        if matched_string_groups:
+        if (matched_string_groups) and (not commanddata==""):
             # Merken der Block-Texte, welche vor den benötigten Blöcken steht
             first_matched_group_string = str(matched_string_groups.group(0))
             # Entfernen des Block-identifiers wenn sich de benötigten Daten über mehrere Datenblöcke erstecken.
@@ -865,11 +1091,28 @@ class ConsumptionMonitorApp(App):
     # self          --> Handel zur App
     # EingabeWert   --> String, welcher auf dem GUI-Button als Text erscheinen soll
     def SetzeEingabewert(self, EingabeWert):
+        # StartData-datei einlesen
+        DateiDa = path.exists("/media/pi/INTENSO/StartData.txt")
+        if (DateiDa):
+            StartData = open("/media/pi/INTENSO/StartData.txt").readlines()        
         # Setze Knopf-Text
         Knopf.text = EingabeWert
         # Aktualisiere den Preis in der globalen variable, falls der Preis angepasst wurde
         if Knopf == self.root.ids.Preis:
             self.Preis = float(EingabeWert)
+        if ("DB-Write done" not in StartData[2]) and (DateiDa):
+            # Aktualisierung des Preises
+            if Knopf == self.root.ids.Preis:
+                StartData[4]=EingabeWert
+            # Aktualisierung des Tachostandes
+            if Knopf == self.root.ids.km_Tacho:
+                StartData[3]=EingabeWert
+            # StartData-Datei neu schreiben
+            fobj_out = open("/media/pi/INTENSO/StartData.txt","w")
+            for Data in StartData:
+                fobj_out.write(Data)
+            fobj_out.close()
+            
 
     # löschen der letzen Ziffer in der Touch-Tastatur 
     # self      --> Handel zur App
